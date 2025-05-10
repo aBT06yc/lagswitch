@@ -20,6 +20,8 @@ class AdvancedToggleApp:
         self.root.bind("<Key>", self.on_key_press)
         self.key_listening = False
 
+        self.is_port_search_running = False
+        
         # Main container
         self.main_frame = ttk.Frame(root, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -147,9 +149,12 @@ class AdvancedToggleApp:
             self.toggle_switch()  # Вызовет переключение в OFF
  
     def port_search(self):
+        if self.is_port_search_running:
+            return
         threading.Thread(target=self._run_port_search, daemon=True).start()
 
     def _run_port_search(self):
+        self.is_port_search_running = True
         try:
             self.port_search_process= subprocess.run("connection.exe port_search", capture_output=True, text=True)
             udp_ports = eval(self.port_search_process.stdout)
@@ -158,6 +163,7 @@ class AdvancedToggleApp:
             print("Ошибка при выполнении поиска портов:", e)
 
         self.text.after(0, lambda: self._update_text_with_ports(udp_ports))
+        self.is_port_search_running = False
 
     def _update_text_with_ports(self, udp_ports):
         self.text.config(state='normal')
@@ -230,19 +236,39 @@ class AdvancedToggleApp:
             self.toggle_button.config(text="ON", bg="green")
             #print(self.port_var.get(),self.in_var.get(),self.out_var.get(),self.switch_btn)
             #connection.exe    py connection.py
-            self.lag_switch_process = subprocess.Popen(f"connection.exe   lagswitch udp_port={self.port_var.get()} \
-                                                        inbound={self.in_var.get()} outbound={self.out_var.get()} key={self.switch_btn}")
+            self.lag_switch_process = subprocess.Popen([
+                "connection.exe",
+                "lagswitch",
+                f"udp_port={self.port_var.get()}",
+                f"inbound={self.in_var.get()}",
+                f"outbound={self.out_var.get()}",
+                f"key={self.switch_btn}"
+            ])
         else:
             self.toggle_button.config(text="OFF", bg="red")
-            self.lag_switch_process.kill()
+            subprocess.run(f'taskkill /F /T /PID {self.lag_switch_process.pid}', shell=True)
+            #self.lag_switch_process.kill()
     
     def on_close(self):
         if hasattr(self, 'lag_switch_process') and self.lag_switch_process:
-            self.lag_switch_process.kill()
+            try:
+                subprocess.run(f'taskkill /F /T /PID {self.lag_switch_process.pid}', shell=True)
+                #self.lag_switch_process.kill()
+            except Exception as e:
+                print("Failed to terminate process:", e)
+            
+            self.root.destroy()
 
-        #if hasattr(self, 'port_search_process') and self.port_search_process:
-        #    self.port_search_process.kill()
-
+        # connextion.exe еще может работать после закрытия интрефейса если вызван port_search
+        # процесс сам завершиться после получения 50 пакетов. 
+        # пока что эта проблема не критична  = Т Е Р П И М =
+        """
+        if hasattr(self, 'port_search_process') and self.port_search_process:
+            try:
+                subprocess.run(f'taskkill /F /T /PID {self.port_search_process.pid}', shell=True)
+            except Exception as e:
+                print("Failed to terminate port search process:", e)
+        """
         self.root.destroy()
 
 keycode_to_keyboard = {

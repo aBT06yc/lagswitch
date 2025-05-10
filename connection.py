@@ -10,7 +10,7 @@ from queue import Queue
 def port_search():
     in_packets = []
 
-    with pydivert.WinDivert("udp and outbound") as w:
+    with pydivert.WinDivert("udp and inbound") as w:
         
         for packet in w:
 
@@ -39,7 +39,7 @@ def port_search():
         #print(popular_dst_port)
 
 def lagswitch(udp_port:int,inbound:bool,outbound:int):
-    global key_is_pressed
+    global key_is_pressed,running
 
     if  not inbound and not outbound:
         return 
@@ -49,12 +49,13 @@ def lagswitch(udp_port:int,inbound:bool,outbound:int):
     FILTER += "and inbound" if inbound and not outbound else "" 
     
     print(FILTER)
-    packet_counter = 1
+    #packet_counter = 1
     with pydivert.WinDivert(FILTER) as w:
         for packet in w:
             if not key_is_pressed: # packet_counter%6 ==0:          #not key_is_pressed
                 w.send(packet)
-            packet_counter+=1
+
+            #packet_counter+=1
     
 
 def parse_kwargs(argv):
@@ -82,7 +83,7 @@ def on_mouse_event(event):
             key_is_pressed = False
             #keyboard.press('tab')   
 """   
-                
+
 key_is_pressed = False  
 
 if __name__ == "__main__":
@@ -100,5 +101,6 @@ if __name__ == "__main__":
         keyboard.hook(on_event)
         #mouse.hook(on_mouse_event)
         lagswitch(udp_port,inbound,outbound)
+
         #py main.py lagswitch udp_port=1111 inbound=False outbound=True key=x
 
