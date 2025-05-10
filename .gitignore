@@ -1,0 +1,5 @@
+lag-venv/
+build/
+dist/
+*.exe
+*.spec
