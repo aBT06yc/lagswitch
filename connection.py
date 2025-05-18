@@ -1,6 +1,6 @@
 import pydivert
 import keyboard
-#import mouse
+import mouse
 
 import sys
 import threading
@@ -39,7 +39,7 @@ def port_search():
         #print(popular_dst_port)
 
 def lagswitch(udp_port:int,inbound:bool,outbound:int):
-    global key_is_pressed,running
+    global key_is_pressed
 
     if  not inbound and not outbound:
         return 
@@ -56,7 +56,52 @@ def lagswitch(udp_port:int,inbound:bool,outbound:int):
                 w.send(packet)
 
             #packet_counter+=1
+
+def pistol_switch(udp_port:int,inbound:bool,outbound:int):
+    global key_is_pressed,process_running
+
+    if  not inbound and not outbound:
+        return 
     
+    FILTER = f"udp.SrcPort == {udp_port} " 
+    FILTER += "and outbound" if outbound and not inbound else "" 
+    FILTER += "and inbound" if inbound and not outbound else "" 
+    
+    print(FILTER)
+    #packet_counter = 1
+    with pydivert.WinDivert(FILTER) as w:
+        for packet in w:
+            if process_running:
+                continue
+            w.send(packet)
+
+
+def on_press():
+    global process_running,wheel_up
+
+    if not process_running and wheel_up:
+        #print("ПКМ нажата — запускаем процесс")
+        process_running = True
+        wheel_up = False
+
+def on_release():
+    global process_running
+    if process_running:
+        keyboard.press('3')
+        time.sleep(0.05)
+        keyboard.release('3')
+        time.sleep(0.085)
+        process_running = False
+    #print("ПКМ отжата — процесс остановлен")
+
+def on_wheel(event):
+    global wheel_up
+    if isinstance(event, mouse._mouse_event.WheelEvent):
+        if event.delta > 0:
+            wheel_up = True
+        if event.delta < 0:
+            wheel_up = False
+
 
 def parse_kwargs(argv):
     kwargs = {}
@@ -103,4 +148,15 @@ if __name__ == "__main__":
         lagswitch(udp_port,inbound,outbound)
 
         #py main.py lagswitch udp_port=1111 inbound=False outbound=True key=x
+
+    if func_name == "_lagswitch":
+        process_running = False
+        udp_port,inbound,outbound,key = int(kwargs["udp_port"]),eval(kwargs["inbound"]),eval(kwargs["outbound"]),kwargs["key"]
+        TARGET_VK_CODE = keyboard.key_to_scan_codes(key)[0]              
+
+        mouse.on_button(on_press, buttons=mouse.RIGHT, types=mouse.DOWN)
+        mouse.on_button(on_release,   buttons=mouse.RIGHT, types=mouse.UP)
+        mouse.hook(on_wheel)
+        pistol_switch(udp_port,inbound,outbound)
+        
 

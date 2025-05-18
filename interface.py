@@ -156,7 +156,7 @@ class AdvancedToggleApp:
     def _run_port_search(self):
         self.is_port_search_running = True
         try:
-            self.port_search_process= subprocess.run("connection.exe port_search", capture_output=True, text=True)
+            self.port_search_process= subprocess.run("py connection.py port_search", capture_output=True, text=True)  #connection.exe
             udp_ports = eval(self.port_search_process.stdout)
         except Exception as e:
             udp_ports = {}
@@ -237,7 +237,8 @@ class AdvancedToggleApp:
             #print(self.port_var.get(),self.in_var.get(),self.out_var.get(),self.switch_btn)
             #connection.exe    py connection.py
             self.lag_switch_process = subprocess.Popen([
-                "connection.exe",
+                "py",
+                "connection.py",#"connection.exe",
                 "lagswitch",
                 f"udp_port={self.port_var.get()}",
                 f"inbound={self.in_var.get()}",
