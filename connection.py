@@ -1,5 +1,5 @@
 import pydivert
-import keyboard
+import keyboard  # у этой либы инпут нормальный в идеале че помощнее. 
 import mouse
 
 import sys
@@ -10,7 +10,9 @@ from queue import Queue
 def port_search():
     in_packets = []
 
-    with pydivert.WinDivert("udp and inbound") as w:
+    with pydivert.WinDivert("udp and inbound", 
+                             priority=0,
+                            flags=pydivert.Flag.SNIFF) as w:
         
         for packet in w:
 
@@ -44,64 +46,19 @@ def lagswitch(udp_port:int,inbound:bool,outbound:int):
     if  not inbound and not outbound:
         return 
     
-    FILTER = f"udp.SrcPort == {udp_port} " 
-    FILTER += "and outbound" if outbound and not inbound else "" 
-    FILTER += "and inbound" if inbound and not outbound else "" 
+    if outbound and outbound:
+        FILTER = f"udp.SrcPort == {udp_port} or udp.DstPort == {udp_port}" 
+    elif (not outbound) and outbound:
+        FILTER = f"udp.SrcPort == {udp_port}"
+    else:
+        FILTER = f"udp.DstPort == {udp_port}"
     
     print(FILTER)
-    #packet_counter = 1
-    with pydivert.WinDivert(FILTER) as w:
+
+    with pydivert.WinDivert(FILTER,priority=1) as w:
         for packet in w:
-            if not key_is_pressed: # packet_counter%6 ==0:          #not key_is_pressed
+            if not key_is_pressed: 
                 w.send(packet)
-
-            #packet_counter+=1
-
-def pistol_switch(udp_port:int,inbound:bool,outbound:int):
-    global key_is_pressed,process_running
-
-    if  not inbound and not outbound:
-        return 
-    
-    FILTER = f"udp.SrcPort == {udp_port} " 
-    FILTER += "and outbound" if outbound and not inbound else "" 
-    FILTER += "and inbound" if inbound and not outbound else "" 
-    
-    print(FILTER)
-    #packet_counter = 1
-    with pydivert.WinDivert(FILTER) as w:
-        for packet in w:
-            if process_running:
-                continue
-            w.send(packet)
-
-
-def on_press():
-    global process_running,wheel_up
-
-    if not process_running and wheel_up:
-        #print("ПКМ нажата — запускаем процесс")
-        process_running = True
-        wheel_up = False
-
-def on_release():
-    global process_running
-    if process_running:
-        keyboard.press('3')
-        time.sleep(0.05)
-        keyboard.release('3')
-        time.sleep(0.085)
-        process_running = False
-    #print("ПКМ отжата — процесс остановлен")
-
-def on_wheel(event):
-    global wheel_up
-    if isinstance(event, mouse._mouse_event.WheelEvent):
-        if event.delta > 0:
-            wheel_up = True
-        if event.delta < 0:
-            wheel_up = False
-
 
 def parse_kwargs(argv):
     kwargs = {}
@@ -118,16 +75,6 @@ def on_event(event):
     elif event.event_type == 'up' and event.scan_code == TARGET_VK_CODE:
         key_is_pressed = False
 
-"""
-def on_mouse_event(event):
-    global key_is_pressed
-    if isinstance(event, mouse.ButtonEvent):
-        if event.event_type == 'down' and event.button == 'left':
-            key_is_pressed = True
-        elif event.event_type == 'up' and event.button == 'left':
-            key_is_pressed = False
-            #keyboard.press('tab')   
-"""   
 
 key_is_pressed = False  
 
@@ -149,14 +96,4 @@ if __name__ == "__main__":
 
         #py main.py lagswitch udp_port=1111 inbound=False outbound=True key=x
 
-    if func_name == "_lagswitch":
-        process_running = False
-        udp_port,inbound,outbound,key = int(kwargs["udp_port"]),eval(kwargs["inbound"]),eval(kwargs["outbound"]),kwargs["key"]
-        TARGET_VK_CODE = keyboard.key_to_scan_codes(key)[0]              
-
-        mouse.on_button(on_press, buttons=mouse.RIGHT, types=mouse.DOWN)
-        mouse.on_button(on_release,   buttons=mouse.RIGHT, types=mouse.UP)
-        mouse.hook(on_wheel)
-        pistol_switch(udp_port,inbound,outbound)
-        
 

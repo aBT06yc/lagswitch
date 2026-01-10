@@ -10,7 +10,7 @@ class AdvancedToggleApp:
     def __init__(self, root):
         
         self.root = root
-        self.root.title('Lag-Switch (lite v0.1)')
+        self.root.title('Lag-Switch (lite v0.1.1)')
         #self.root.geometry("400x300")  # Увеличил размер окна
         self.root.resizable(False, False)
 
@@ -156,7 +156,7 @@ class AdvancedToggleApp:
     def _run_port_search(self):
         self.is_port_search_running = True
         try:
-            self.port_search_process= subprocess.run("py connection.py port_search", capture_output=True, text=True)  #connection.exe
+            self.port_search_process= subprocess.run("py connection.py port_search", capture_output=True, text=True)  #connection.exe   # <<<<----------------    ‼️‼️‼️‼️‼️ ЭТО ДЛЯ СБОРКИ EXE  , py connection.py убрать
             udp_ports = eval(self.port_search_process.stdout)
         except Exception as e:
             udp_ports = {}
@@ -238,7 +238,8 @@ class AdvancedToggleApp:
             #connection.exe    py connection.py
             self.lag_switch_process = subprocess.Popen([
                 "py",
-                "connection.py",#"connection.exe",
+                "connection.py",
+                #"connection.exe",   # <<<<----------------    ‼️‼️‼️‼️‼️ ЭТО ДЛЯ СБОРКИ EXE  , верхние 2 закоментить
                 "lagswitch",
                 f"udp_port={self.port_var.get()}",
                 f"inbound={self.in_var.get()}",
