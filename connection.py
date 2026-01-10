@@ -46,9 +46,9 @@ def lagswitch(udp_port:int,inbound:bool,outbound:int):
     if  not inbound and not outbound:
         return 
     
-    if outbound and outbound:
+    if outbound and inbound:
         FILTER = f"udp.SrcPort == {udp_port} or udp.DstPort == {udp_port}" 
-    elif (not outbound) and outbound:
+    elif (not inbound) and outbound:
         FILTER = f"udp.SrcPort == {udp_port}"
     else:
         FILTER = f"udp.DstPort == {udp_port}"
