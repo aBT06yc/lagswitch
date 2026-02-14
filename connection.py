@@ -7,93 +7,141 @@ import threading
 import time
 from queue import Queue
 
-def port_search():
-    in_packets = []
+from collections import Counter
+import ipaddress
 
-    with pydivert.WinDivert("udp and inbound", 
+# глобалка для дропа
+dropper_active = False  
+
+def on_event(event, target_key, switch_type):
+
+    global dropper_active
+    
+    # Проверка на нажатие или отпускание клавиши
+    if event.event_type == 'down' and event.scan_code == target_key:
+        if switch_type == "hold":
+            dropper_active = True  # Пока клавиша зажата, активируем dropper
+        elif switch_type == "press":
+            if not dropper_active:  # Активируем dropper при первом нажатии
+                dropper_active = True
+    elif event.event_type == 'up' and event.scan_code == target_key:
+        if switch_type == "hold":
+            dropper_active = False  # Деактивируем, как только клавиша отпускается
+        elif switch_type == "press":
+            dropper_active = False  # Деактивируем на отпускание клавиши
+
+def ip_sniff(size=100,filter_local_ips=True):
+    """
+    `size` - сколько пакетов ждем до статистики
+
+    `filter_local_ips` - НЕ учитываем локальные и приватные IP? True - не учитываем.
+
+    Если запустить скан без интернет трафика он тупо повистнет, мне похуй 😎👍
+    """
+    #print("Sniffer started. Scanning...",flush=True)
+
+    in_packets = []
+    processed_count  = 0
+
+    with pydivert.WinDivert("inbound", 
                              priority=0,
                             flags=pydivert.Flag.SNIFF) as w:
         
-        for packet in w:
+        for i,packet in enumerate(w):
 
-            in_packets.append(packet)
-            w.send(packet)
+            if filter_local_ips:
+                ip_obj = ipaddress.ip_address(packet.src_addr)
+                if ip_obj.is_private or ip_obj.is_loopback:
+                      continue
 
-            if len(in_packets) == 50:
+            in_packets.append(packet.src_addr)
+            processed_count+=1
+
+            if processed_count == size :
                 break
+
+        stat_list = Counter(in_packets).most_common()
+        popular_ip = stat_list[0][0]
         
-        max_count = 0
-        popular_dst_port = -1
-        ip_dict ={}
+        # вывожу сразу с процентамми 
+        for i,elem in enumerate(stat_list):
+            percent = (elem[1]/size)* 100
+            stat_list[i] = (elem[0],f"{percent :.2f}%")
+
+        #local_trafic_percent = (1 - (processed_count/i))*100
+        #print(f"local trafic: {local_trafic_percent :.2f}%")  # можем себе позвоилить
+
+        print(stat_list,flush=True) # этот print нужен чтобы интерфейс увидел инфу через  stdout
+        #print(popular_ip,flush=True)
         
-        for packet in in_packets:
-            src_addr = packet.src_addr
-            if src_addr not in list(ip_dict.keys()):
-                ip_dict[src_addr] = {"dst_port":packet.dst_port,"packet_count":1}    #packet.src_port
-            else:
-                ip_dict[src_addr]["packet_count"]+=1
-                if ip_dict[src_addr]["packet_count"] > max_count:
-                    max_count = ip_dict[src_addr]["packet_count"]
-                    popular_dst_port = ip_dict[src_addr]["dst_port"]
+        return popular_ip,stat_list  # return нужен если запускать без интерфейсаю что-то типо супер изи варианта, но не для очередняр, смотри ниже в (main) как я запускаю
 
-        udp_port = popular_dst_port
-        print(ip_dict)
-        #print(popular_dst_port)
 
-def lagswitch(udp_port:int,inbound:bool,outbound:int):
-    global key_is_pressed
+def packet_control(target_ip:str,
+                   inbound:bool,outbound:bool,
+                   tcp:bool,udp:bool,
+                   key:str,switch_type:str):
+    """
+    `packet_control` - сейчас эта функция дропает все пакеты которые ты указал.
+    ----------------------
+    `target_ip` - какой ip нам дропать
 
-    if  not inbound and not outbound:
+    `inbound`/`outbound` - какой трафик дропаем (исходящий\входящий), можно весь
+
+    `tcp`/`udp` - какой протокол дропаем, можно оба
+
+    `key` - какая клавиша активирует дроп
+
+    `switch_type` - вид переключателся `press` или `hold`
+
+    """
+
+    global dropper_active
+
+    if  not (inbound or outbound):
         return 
+    if  not (tcp or udp):
+        return
+    
+    try:
+        target_key = keyboard.key_to_scan_codes(key)[0]     
+        keyboard.hook(lambda e: on_event(e, target_key, switch_type))
+    except Exception as e:
+        return
     
     if outbound and inbound:
-        FILTER = f"udp.SrcPort == {udp_port} or udp.DstPort == {udp_port}" 
+        FILTER = f"(ip.DstAddr == {target_ip} or ip.SrcAddr == {target_ip})" 
     elif (not inbound) and outbound:
-        FILTER = f"udp.SrcPort == {udp_port}"
+        FILTER = f"(ip.DstAddr == {target_ip})"
     else:
-        FILTER = f"udp.DstPort == {udp_port}"
+        FILTER = f"(ip.SrcAddr == {target_ip})"
     
+    if tcp and udp:
+        pass 
+    elif (not tcp) and udp:
+        FILTER += " and udp"
+    else:
+        FILTER += " and tcp"
+
     print(FILTER)
 
     with pydivert.WinDivert(FILTER,priority=1) as w:
         for packet in w:
-            if not key_is_pressed: 
+            if not dropper_active: 
                 w.send(packet)
 
-def parse_kwargs(argv):
-    kwargs = {}
-    for arg in argv:
-        if "=" in arg:
-            key, value = arg.split("=", 1)
-            kwargs[key] = value
-    return kwargs
-
-def on_event(event):
-    global key_is_pressed
-    if event.event_type == 'down' and event.scan_code == TARGET_VK_CODE:
-        key_is_pressed = True
-    elif event.event_type == 'up' and event.scan_code == TARGET_VK_CODE:
-        key_is_pressed = False
-
-
-key_is_pressed = False  
 
 if __name__ == "__main__":
+    #  Это версия без интерфеса, сам ручками вбивай че надо
+    popular_ip, stat_list = ip_sniff()
 
-    func_name,kwargs  = sys.argv[1],parse_kwargs(sys.argv[2:])
-    #print(func_name,kwargs)
-    if func_name == "port_search":
-        port_search()
-
-
-    if func_name == "lagswitch":
-        udp_port,inbound,outbound,key = int(kwargs["udp_port"]),eval(kwargs["inbound"]),eval(kwargs["outbound"]),kwargs["key"]
-        TARGET_VK_CODE = keyboard.key_to_scan_codes(key)[0]              
-
-        keyboard.hook(on_event)
-        #mouse.hook(on_mouse_event)
-        lagswitch(udp_port,inbound,outbound)
-
-        #py main.py lagswitch udp_port=1111 inbound=False outbound=True key=x
-
-
+    target_ip:str = popular_ip
+    inbound:bool = False
+    outbound:bool = True
+    tcp:bool = True
+    udp:bool = True
+    key:str = "x"
+    switch_type:str = "hold"
+    
+    # сейчас настроено на ДРОП ВСЕХ ИСХОДЯЩИХ пакетов
+    packet_control(target_ip,inbound,outbound,tcp,udp,key,switch_type)

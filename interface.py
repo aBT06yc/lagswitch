@@ -5,13 +5,15 @@ from tkinter import font
 
 import subprocess
 import threading
+import sys
+import re
 
 class AdvancedToggleApp:
     def __init__(self, root):
         
         self.root = root
-        self.root.title('Lag-Switch (lite v0.1.1)')
-        #self.root.geometry("400x300")  # Увеличил размер окна
+        self.root.title('Lag-Switch (pro v0.2.1)')
+        #self.root.geometry("400x300")  # 
         self.root.resizable(False, False)
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -20,8 +22,8 @@ class AdvancedToggleApp:
         self.root.bind("<Key>", self.on_key_press)
         self.key_listening = False
 
-        self.is_port_search_running = False
-        
+        self.is_ip_search_running = False
+
         # Main container
         self.main_frame = ttk.Frame(root, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -29,67 +31,74 @@ class AdvancedToggleApp:
         # Left side (checkboxes and port input)
         self.left_frame = ttk.Frame(self.main_frame)
         self.left_frame.pack(side=tk.LEFT, fill=tk.Y)
-
         # Right side 
         self.right_frame = ttk.Frame(self.main_frame)
         self.right_frame.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Checkboxes
+        self.left_left_frame = ttk.Frame(self.left_frame)
+        self.left_right_frame = ttk.Frame(self.left_frame)
+        self.left_left_left_frame = ttk.Frame(self.left_left_frame)
+        self.left_left_right_frame = ttk.Frame(self.left_left_frame)
+
+        self.left_left_frame.pack(side=tk.LEFT, fill=tk.Y)
+        self.left_right_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        self.left_left_left_frame.pack(side=tk.LEFT, fill=tk.Y)
+        self.left_left_right_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        
+        #  протокол
+        self.protocol_frame = ttk.LabelFrame(self.left_right_frame, text="Protocol", padding="5")
+        self.protocol_frame.pack(pady=5)
+        self.tcp_var = tk.BooleanVar(value=False)  # По умолчанию TCP включен
+        self.udp_var = tk.BooleanVar(value=True)  # По умолчанию UDP выключен
+        self.tcp_checkbox = ttk.Checkbutton(self.protocol_frame, text="TCP", variable=self.tcp_var)
+        self.tcp_checkbox.pack(anchor=tk.W)
+        self.udp_checkbox = ttk.Checkbutton(self.protocol_frame, text="UDP", variable=self.udp_var)
+        self.udp_checkbox.pack(anchor=tk.W)
+
+        # direction
         self.checkbox_frame = ttk.LabelFrame(self.left_frame, text="Direction", padding="5")
         self.checkbox_frame.pack(pady=5)
-
         self.in_var = tk.BooleanVar()
         self.out_var = tk.BooleanVar(value=True)
-
-        # Следим за изменениями чекбоксов
-        self.in_var.trace_add('write', lambda *_: self.auto_turn_off())
-        self.out_var.trace_add('write', lambda *_: self.auto_turn_off())
-
-        self.in_cb = ttk.Checkbutton(
-            self.checkbox_frame, 
-            text="inbound", 
-            variable=self.in_var
-        )
+        self.in_cb = ttk.Checkbutton( self.checkbox_frame, text="inbound", variable=self.in_var)
         self.in_cb.pack(anchor=tk.W)
-
-        self.out_cb = ttk.Checkbutton(
-            self.checkbox_frame, 
-            text="outbound", 
-            variable=self.out_var
-        )
+        self.out_cb = ttk.Checkbutton(self.checkbox_frame,  text="outbound", variable=self.out_var)
         self.out_cb.pack(anchor=tk.W)
 
+
         # Port input with buttons
-        self.port_frame = ttk.Frame(self.left_frame)
-        self.port_frame.pack(pady=10)
+        self.ip_frame = ttk.Frame(self.left_frame)
+        self.ip_frame.pack(pady=10)
 
-        ttk.Label(self.port_frame, text="Port:").pack(side=tk.LEFT)
+        ttk.Label(self.ip_frame, text="IP:").pack(side=tk.LEFT)
 
-        self.port_var = tk.StringVar()
+        self.ip_var = tk.StringVar()
         # Следим за изменениями порта
-        self.port_var.trace_add('write', lambda *_: self.auto_turn_off())
+        self.ip_var.trace_add('write', lambda *_: self.auto_turn_off())
 
         # Поле ввода только чисел
-        vcmd = (root.register(self.validate_port), '%P')
-        self.port_entry = ttk.Entry(
-            self.port_frame, 
-            textvariable=self.port_var, 
-            width=15,
+        self.ip_pattern = r'^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+        vcmd = (root.register(self.validate_input), '%P')
+        self.ip_entry = ttk.Entry(
+            self.ip_frame, 
+            textvariable=self.ip_var, 
+            width=16,
             validate='key',
             validatecommand=vcmd
         )
-        self.port_entry.pack(side=tk.LEFT)
+        self.ip_entry.pack(side=tk.LEFT)
 
-        self.port_button = ttk.Button(
-            self.port_frame, 
-            text="Auto port search", 
-            command=self.port_search
+        self.ipt_button = ttk.Button(
+            self.ip_frame, 
+            text="sniff IP", 
+            command=self.ip_search
         )
-        self.port_button.pack(side=tk.LEFT, padx=5)
+        self.ipt_button.pack(side=tk.LEFT, padx=5)
 
         self.toggle_label = ttk.Label(
             self.right_frame, 
-            text="Lag-Switch:", 
+            text="Packet-control:", 
             font=('Arial', 10)
         )
         self.toggle_label.pack()
@@ -118,14 +127,24 @@ class AdvancedToggleApp:
             text=f'now "{self.switch_btn}"', 
             font=('Arial', 10)
         )
-        self.switch_btn_label.pack(side=tk.BOTTOM)
+
+        self.switch_btn_label.pack() #side=tk.BOTTOM
+
+        # switch_type (Press/Hold)
+        self.switch_type_frame = ttk.LabelFrame(self.right_frame, text="switch type", padding="5")
+        self.switch_type_frame.pack(pady=5)
+        self.switch_type_var = tk.StringVar()
+        self.switch_type_combobox = ttk.Combobox(self.switch_type_frame, textvariable=self.switch_type_var, values=["Press", "Hold"])
+        self.switch_type_combobox.set("Hold")  # По умолчанию выбираем Hold
+        self.switch_type_combobox.pack(pady=5)
+
 
         self.bottom_frame = ttk.Frame(root)
         self.bottom_frame.pack(fill=tk.X, padx=10, pady=10)
 
         self.text = tk.Text(self.bottom_frame, height=6, width=60, state='normal')
         self.text.pack(fill=tk.BOTH, expand=True)
-        self.text.insert(tk.END, 'Press "Auto port search"')
+        self.text.insert(tk.END, 'Press "sniff IP"')
         self.text.config(state='disabled')
         
         self.signature_label = ttk.Label(
@@ -135,37 +154,61 @@ class AdvancedToggleApp:
         )
         self.signature_label.pack(side=tk.RIGHT, anchor=tk.SE)
 
-    def validate_port(self, value):
-        """Разрешаем только числа 0-65535"""
-        if value == "":
-            return True  # Пустое поле разрешено
-        if not value.isdigit():
+        # Следим за изменениями 
+        self.in_var.trace_add('write', lambda *_: self.auto_turn_off())
+        self.out_var.trace_add('write', lambda *_: self.auto_turn_off())
+        self.tcp_var.trace_add('write', lambda *_: self.auto_turn_off())
+        self.udp_var.trace_add('write', lambda *_: self.auto_turn_off())
+        self.switch_type_var.trace_add('write', lambda *_: self.auto_turn_off())
+
+
+
+    def validate_ip(self,P):
+            # Проверяем, что введенное значение соответствует формату IP-адреса
+            if P == "" or re.match(self.ip_pattern, P):
+                return True
             return False
-        port = int(value)
-        return 0 <= port <= 65535
+    
+    def validate_input(self, s):
+        """Разрешаем только числа 0-65535"""
+        return len(s) <= 15
 
     def auto_turn_off(self):
         if self.toggle_state:
             self.toggle_switch()  # Вызовет переключение в OFF
  
-    def port_search(self):
-        if self.is_port_search_running:
-            return
-        threading.Thread(target=self._run_port_search, daemon=True).start()
+    def ip_search(self):
 
-    def _run_port_search(self):
-        self.is_port_search_running = True
+        if self.is_ip_search_running:
+            return
+        
+        self.text.config(state='normal')
+        self.text.delete("1.0", tk.END)
+        self.text.insert(tk.END,"Sniffer started. Scanning...")
+        self.text.config(state='disabled')
+        
+        self.is_ip_search_running = True
+        cmd = [sys.executable, "-u", "interface.py", "--sniffer"]
+
         try:
-            self.port_search_process= subprocess.run("py connection.py port_search", capture_output=True, text=True)  #connection.exe   # <<<<----------------    ‼️‼️‼️‼️‼️ ЭТО ДЛЯ СБОРКИ EXE  , py connection.py убрать
-            udp_ports = eval(self.port_search_process.stdout)
+            self.ip_search_process = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,                  # текстовый режим
+                bufsize=1,                  # line-buffering на стороне родителя (работает только в text=True)
+                encoding="utf-8",           # подберите под ваш вывод; см. раздел про кодировки
+            )
+            stdout = self.ip_search_process.stdout
+            print(stdout)
+
         except Exception as e:
             udp_ports = {}
-            print("Ошибка при выполнении поиска портов:", e)
+            print("Sniffer error: ", e)
 
-        self.text.after(0, lambda: self._update_text_with_ports(udp_ports))
-        self.is_port_search_running = False
+        self.text.after(0, lambda: self._update_text_with_ports(eval(stdout)))
+        self.is_ip_search_running = False
 
-    def _update_text_with_ports(self, udp_ports):
+    def _update_text_with_ports(self, stat_list):
         self.text.config(state='normal')
         self.text.delete("1.0", tk.END)
 
@@ -175,15 +218,16 @@ class AdvancedToggleApp:
             self.bold_font.configure(weight="bold", size=12)
             self.text.tag_configure("bold", font=self.bold_font)
 
-        if not udp_ports:
+        if not stat_list:
             self.text.insert(tk.END, "Ошибка: нет данных\n")
         else:
-            for ip in udp_ports:
-                port = udp_ports[ip]["dst_port"]
-                count = udp_ports[ip]["packet_count"]
-                self.text.insert(tk.END, f"port: ")
-                self.text.insert(tk.END, f"{port} \t", "bold")
-                self.text.insert(tk.END, f'udp_trafic: {count / 0.5}% \t from: {ip}\n')
+
+            for elem in stat_list:
+                ip,percent = elem
+        
+                self.text.insert(tk.END, f"FROM: ")
+                self.text.insert(tk.END, f"{ip} \t", "bold")
+                self.text.insert(tk.END, f'trafic: {percent}\n')
 
         self.text.config(state='disabled')
 
@@ -228,24 +272,37 @@ class AdvancedToggleApp:
                 messagebox.showwarning("Warning", "Choose direction (in/out)")
                 self.toggle_state = False
                 return
-            elif not self.port_var.get():
-                messagebox.showwarning("Warning", "Choose udp port (0-65535)")
+            elif not (self.udp_var.get() or self.tcp_var.get()):
+                messagebox.showwarning("Warning", "Choose protocol (TCP/UDP)")
                 self.toggle_state = False
                 return
-
+            elif not self.ip_var.get():
+                messagebox.showwarning("Warning", "Choose IP address")
+                self.toggle_state = False
+                return
+            elif not self.validate_ip(self.ip_var.get()):
+                messagebox.showwarning("Warning", "The IP address is not correct!")
+                self.toggle_state = False
+                return
+            
             self.toggle_button.config(text="ON", bg="green")
-            #print(self.port_var.get(),self.in_var.get(),self.out_var.get(),self.switch_btn)
-            #connection.exe    py connection.py
-            self.lag_switch_process = subprocess.Popen([
-                "py",
-                "connection.py",
-                #"connection.exe",   # <<<<----------------    ‼️‼️‼️‼️‼️ ЭТО ДЛЯ СБОРКИ EXE  , верхние 2 закоментить
-                "lagswitch",
-                f"udp_port={self.port_var.get()}",
-                f"inbound={self.in_var.get()}",
-                f"outbound={self.out_var.get()}",
-                f"key={self.switch_btn}"
-            ])
+
+            cmd = [sys.executable,
+                    "--packet-control",
+                    "--target_ip",   str(self.ip_var.get()),
+                    "--in",          str(self.in_var.get()),
+                    "--out",         str(self.out_var.get()),
+                    "--tcp",         str(self.tcp_var.get()),
+                    "--udp",         str(self.udp_var.get()),
+                    "--key",         str(self.switch_btn),
+                    "--switch_type", str(self.switch_type_var.get()),] 
+            
+            if getattr(sys, "frozen", True):  # Если мы запустились через py venv
+                cmd = cmd[:1] + ["interface.py",] + cmd[1:]
+
+            #print(cmd)
+            self.lag_switch_process = subprocess.Popen(cmd)
+
         else:
             self.toggle_button.config(text="OFF", bg="red")
             subprocess.run(f'taskkill /F /T /PID {self.lag_switch_process.pid}', shell=True)
@@ -261,13 +318,13 @@ class AdvancedToggleApp:
             
             self.root.destroy()
 
-        # connextion.exe еще может работать после закрытия интрефейса если вызван port_search
+        # sniffer еще может работать после закрытия интрефейса если вызван ip_search. не факт . я хз
         # процесс сам завершиться после получения 50 пакетов. 
         # пока что эта проблема не критична  = Т Е Р П И М =
         """
-        if hasattr(self, 'port_search_process') and self.port_search_process:
+        if hasattr(self, 'ip_search_process') and self.ip_search_process:
             try:
-                subprocess.run(f'taskkill /F /T /PID {self.port_search_process.pid}', shell=True)
+                subprocess.run(f'taskkill /F /T /PID {self.ip_search_process.pid}', shell=True)
             except Exception as e:
                 print("Failed to terminate port search process:", e)
         """
@@ -339,7 +396,40 @@ keycode_to_keyboard = {
     40: 'down',
 }
 
-if __name__ == "__main__":
+def main():
+    global root,app
+
+    if "--sniffer" in sys.argv:
+        # 
+        from connection import ip_sniff
+        ip_sniff()
+        return
+    
+    if "--packet-control" in sys.argv:
+        # 
+        from connection import packet_control
+        #print(sys.argv)
+        #i = sys.argv.index("--packet-control") 
+        try:
+            # кому не похуй, сделайте цикл 💩🤝
+            target_ip   = sys.argv[sys.argv.index("--target_ip")  + 1]
+            inbound     = sys.argv[sys.argv.index("--in")  + 1].lower() == 'true'  # Преобразуем строку в bool
+            outbound    = sys.argv[sys.argv.index("--out")  + 1].lower() == 'true'
+            tcp         = sys.argv[sys.argv.index("--tcp")  + 1].lower() == 'true'
+            udp         = sys.argv[sys.argv.index("--udp")  + 1].lower() == 'true'
+            key         = sys.argv[sys.argv.index("--key")  + 1]
+            switch_type = sys.argv[sys.argv.index("--switch_type") + 1].lower()
+        except IndexError:
+            #print("Недостаточно аргументов для запуска packet-control!")
+            return
+
+        # Передаем все эти параметры в packet_control
+        packet_control(target_ip, inbound, outbound, tcp, udp, key, switch_type)
+        return
+
     root = tk.Tk()
     app = AdvancedToggleApp(root)
     root.mainloop()
+
+if __name__ == "__main__":
+    main()
