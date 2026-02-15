@@ -4,15 +4,15 @@ from tkinter import messagebox
 from tkinter import font
 
 import subprocess
-import threading
-import sys
+import threading,queue
+import sys,os
 import re
 
 class AdvancedToggleApp:
     def __init__(self, root):
         
         self.root = root
-        self.root.title('Lag-Switch (pro v0.2.1)')
+        self.root.title('Lag-Switch (pro v0.2.2)')
         #self.root.geometry("400x300")  # 
         self.root.resizable(False, False)
 
@@ -23,7 +23,7 @@ class AdvancedToggleApp:
         self.key_listening = False
 
         self.is_ip_search_running = False
-
+        self.q=queue.Queue()
         # Main container
         self.main_frame = ttk.Frame(root, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -176,7 +176,20 @@ class AdvancedToggleApp:
     def auto_turn_off(self):
         if self.toggle_state:
             self.toggle_switch()  # Вызовет переключение в OFF
- 
+    
+    def stdout_reader(self):
+        for l in iter(self.ip_search_process.stdout.readline,""): 
+            self.q.put(l)
+
+    def pump(self):
+        while not self.q.empty(): 
+            text = self.q.get()
+            print(text)
+            self._update_text_with_ports(text)
+            #t.insert("end",q.get())
+        root.after(50,self.pump)
+        
+
     def ip_search(self):
 
         if self.is_ip_search_running:
@@ -188,29 +201,58 @@ class AdvancedToggleApp:
         self.text.config(state='disabled')
         
         self.is_ip_search_running = True
-        cmd = [sys.executable, "-u", "interface.py", "--sniffer"]
+        cmd = [sys.executable, "--sniffer"]
+
+        if getattr(sys, "frozen", True):                        # Если мы запустились через py venv
+                cmd = cmd[:1] + ["-u", "interface.py",] + cmd[1:]
 
         try:
-            self.ip_search_process = subprocess.run(
+            env=os.environ.copy(); env["PYTHONUNBUFFERED"]="1"
+            
+            self.ip_search_process = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
                 text=True,                  # текстовый режим
                 bufsize=1,                  # line-buffering на стороне родителя (работает только в text=True)
-                encoding="utf-8",           # подберите под ваш вывод; см. раздел про кодировки
+                encoding="utf-8",
+                env=env,
             )
-            stdout = self.ip_search_process.stdout
-            print(stdout)
+            threading.Thread(target=self.stdout_reader,daemon=True).start()
+            # self.ip_search_process = subprocess.run(
+            #     cmd,
+            #     capture_output=True,
+            #     text=True,                  # текстовый режим
+            #     bufsize=1,                  # line-buffering на стороне родителя (работает только в text=True)
+            #     encoding="utf-8",           # подберите под ваш вывод; см. раздел про кодировки
+            # )
+            #stdout = self.ip_search_process.stdout
+            #print(stdout)
+            self.pump()
+            
 
         except Exception as e:
-            udp_ports = {}
+            self.ip_search_process = None
             print("Sniffer error: ", e)
 
-        self.text.after(0, lambda: self._update_text_with_ports(eval(stdout)))
-        self.is_ip_search_running = False
-
+        #self.text.after(0, lambda: self._update_text_with_ports(eval(stdout)))
+        #self.is_ip_search_running = False
+    
     def _update_text_with_ports(self, stat_list):
+
+        self.is_ip_search_running = False  # ‼️🔥 костыль, адский.
+        # В идеале Thread для снифера отслеживать и при заршении  эту переменную занулять. Но мне че-та похуй как-то
+
         self.text.config(state='normal')
         self.text.delete("1.0", tk.END)
+
+        try:
+            stat_list = eval(stat_list)
+            if not (type(stat_list) is list):
+                raise Exception("stat_list not a list type")
+        except:
+            self.text.insert(tk.END, f"sniffer ERROR ;( ")
+            self.text.config(state='disabled')
+            return
 
         # Настройка жирного шрифта (однократно)
         if not hasattr(self, "bold_font"):
@@ -218,16 +260,13 @@ class AdvancedToggleApp:
             self.bold_font.configure(weight="bold", size=12)
             self.text.tag_configure("bold", font=self.bold_font)
 
-        if not stat_list:
-            self.text.insert(tk.END, "Ошибка: нет данных\n")
-        else:
 
-            for elem in stat_list:
-                ip,percent = elem
-        
-                self.text.insert(tk.END, f"FROM: ")
-                self.text.insert(tk.END, f"{ip} \t", "bold")
-                self.text.insert(tk.END, f'trafic: {percent}\n')
+        for elem in stat_list:
+            ip,percent = elem
+    
+            self.text.insert(tk.END, f"FROM: ")
+            self.text.insert(tk.END, f"{ip} \t", "bold")
+            self.text.insert(tk.END, f'trafic: {percent}\n')
 
         self.text.config(state='disabled')
 
@@ -309,6 +348,7 @@ class AdvancedToggleApp:
             #self.lag_switch_process.kill()
     
     def on_close(self):
+        # Вроде все норм, нормально убивает дочек, но я хз че если будет ошибка, и возможны ли ошибки
         if hasattr(self, 'lag_switch_process') and self.lag_switch_process:
             try:
                 subprocess.run(f'taskkill /F /T /PID {self.lag_switch_process.pid}', shell=True)
@@ -318,16 +358,12 @@ class AdvancedToggleApp:
             
             self.root.destroy()
 
-        # sniffer еще может работать после закрытия интрефейса если вызван ip_search. не факт . я хз
-        # процесс сам завершиться после получения 50 пакетов. 
-        # пока что эта проблема не критична  = Т Е Р П И М =
-        """
         if hasattr(self, 'ip_search_process') and self.ip_search_process:
             try:
                 subprocess.run(f'taskkill /F /T /PID {self.ip_search_process.pid}', shell=True)
             except Exception as e:
                 print("Failed to terminate port search process:", e)
-        """
+        
         self.root.destroy()
 
 keycode_to_keyboard = {
@@ -396,6 +432,17 @@ keycode_to_keyboard = {
     40: 'down',
 }
 
+
+# фикс под другие расскладки 
+# https://ru.stackoverflow.com/questions/722885/%D0%92%D1%81%D1%82%D0%B0%D0%B2%D0%BA%D0%B0-%D0%B8%D0%B7-%D0%B1%D1%83%D1%84%D0%B5%D1%80%D0%B0-%D0%B2-tkinter-%D0%B3%D0%BE%D1%80%D1%8F%D1%87%D0%B8%D0%BC%D0%B8-%D0%BA%D0%BB%D0%B0%D0%B2%D0%B8%D1%88%D0%B0%D0%BC%D0%B8-%D0%B2-%D1%80%D1%83%D1%81%D1%81%D0%BA%D0%BE%D0%B9-%D1%80%D0%B0%D1%81%D0%BA%D0%BB%D0%B0%D0%B4%D0%BA%D0%B5
+def CopyPaste(e):
+    if e.keycode == 86 and e.keysym != 'v':
+        e.widget.event_generate('<<Paste>>')
+    elif e.keycode == 67 and e.keysym != 'c':
+        e.widget.event_generate('<<Copy>>')
+    elif e.keycode == 88 and e.keysym != 'x':
+        e.widget.event_generate('<<Cut>>')
+
 def main():
     global root,app
 
@@ -427,8 +474,10 @@ def main():
         packet_control(target_ip, inbound, outbound, tcp, udp, key, switch_type)
         return
 
+    
     root = tk.Tk()
     app = AdvancedToggleApp(root)
+    root.bind("<Control-Key>", CopyPaste)
     root.mainloop()
 
 if __name__ == "__main__":

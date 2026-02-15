@@ -1,5 +1,8 @@
-80% made by chat GPT LOL 💩
+# Packet dropper by IP
+Enable to control:
+ - inbound/outbound packets
+ - TCP/UDP protocol
 
-`pyinstaller --onefile --uac-admin --noconsole connection.py`
+*if you need to build project ot .exe run this command:*
 
-`pyinstaller --onefile --uac-admin --noconsole interface.py`
+`pyinstaller --onefile --uac-admin --noconsole interface.py --name "LagSwitch Pro"`
