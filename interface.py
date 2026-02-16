@@ -8,9 +8,23 @@ import threading,queue
 import sys,os
 import re
 
+import ctypes
+
+def is_admin():
+    """Проверка, имеет ли пользователь права администратора"""
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except Exception as e:
+        return False
+
+def show_admin_error():
+    """Показывает ошибку, если нет прав администратора"""
+    messagebox.showerror("ERROR", "ADMINISTRATOR RIGHTS ARE REQUIRED!")
+
+
 class AdvancedToggleApp:
     def __init__(self, root):
-        
+
         self.root = root
         self.root.title('Lag-Switch (pro v0.2.2)')
         #self.root.geometry("400x300")  # 
@@ -24,6 +38,8 @@ class AdvancedToggleApp:
 
         self.is_ip_search_running = False
         self.q=queue.Queue()
+        self.ip_search_process = None
+        self.lag_switch_process = None
         # Main container
         self.main_frame = ttk.Frame(root, padding="10")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -348,20 +364,23 @@ class AdvancedToggleApp:
             #self.lag_switch_process.kill()
     
     def on_close(self):
-        # Вроде все норм, нормально убивает дочек, но я хз че если будет ошибка, и возможны ли ошибки
-        if hasattr(self, 'lag_switch_process') and self.lag_switch_process:
+        
+        #‼️ выводит ошибку якобы процессы существуют, хотя они заверщенны. 
+        # В переменной self.*_process остается что-то и taskkill пытается убить мертвый процесс. НЕ КРИТИЧНО
+
+        if self.lag_switch_process :
             try:
                 subprocess.run(f'taskkill /F /T /PID {self.lag_switch_process.pid}', shell=True)
                 #self.lag_switch_process.kill()
             except Exception as e:
                 print("Failed to terminate process:", e)
             
-            self.root.destroy()
+            #self.root.destroy()
 
-        if hasattr(self, 'ip_search_process') and self.ip_search_process:
+        if self.ip_search_process:
             try:
                 subprocess.run(f'taskkill /F /T /PID {self.ip_search_process.pid}', shell=True)
-            except Exception as e:
+            except Exception as e: 
                 print("Failed to terminate port search process:", e)
         
         self.root.destroy()
@@ -475,10 +494,14 @@ def main():
         return
 
     
-    root = tk.Tk()
-    app = AdvancedToggleApp(root)
-    root.bind("<Control-Key>", CopyPaste)
-    root.mainloop()
+    if not is_admin():
+        show_admin_error()
+        #root.destroy()  
+    else:
+        root = tk.Tk()
+        app = AdvancedToggleApp(root)
+        root.bind("<Control-Key>", CopyPaste)
+        root.mainloop()
 
 if __name__ == "__main__":
     main()

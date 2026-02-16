@@ -1,6 +1,5 @@
 altgraph==0.17.4
 keyboard==0.13.5
-mouse==0.7.1
 packaging==25.0
 pefile==2023.2.7
 pydivert==2.1.0

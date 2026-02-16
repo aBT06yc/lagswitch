@@ -1,16 +1,15 @@
 import pydivert
 import keyboard  # у этой либы инпут нормальный в идеале че помощнее. 
-import mouse
 
-import sys
-import threading
-import time
 from queue import Queue
 
 from collections import Counter
 import ipaddress
 
-# глобалка для дропа
+# ‼️ Работает только от админа
+
+
+# глобалка для дропа пакетов 
 dropper_active = False  
 
 def on_event(event, target_key, switch_type):
