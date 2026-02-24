@@ -1,6 +1,8 @@
 # Packet dropper by IP
 This program blocks your selected traffic from your selected IP.
 
+<img width="494" height="381" alt="Screenshot 2026-02-16 113142" src="https://github.com/user-attachments/assets/ba310310-cd22-4a03-8057-348e9185c3c9" />
+
 Enable to control:
  - inbound/outbound packets
  - TCP/UDP protocol
@@ -18,9 +20,7 @@ Enable to control:
 `pyinstaller --onefile --uac-admin --noconsole interface.py --name "LagSwitch Pro"`
 
 
-<img width="494" height="381" alt="Screenshot 2026-02-16 113142" src="https://github.com/user-attachments/assets/ba310310-cd22-4a03-8057-348e9185c3c9" />
-
-⚙️ HOW TO USE?!
+# ⚙️ HOW TO USE?!
 
 Run LagSwitch Pro.exe 
 
